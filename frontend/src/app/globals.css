@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 74, 222, 128;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: black;
+}
+
+@layer utilities {
+  .glow-text {
+    text-shadow: 0 0 10px rgba(74, 222, 128, 0.5), 0 0 20px rgba(74, 222, 128, 0.3);
+  }
+}
+
+
+a:hover {
+    text-decoration: underline;
+}
+
+.error {
+    color: var(--error-color);
+}
+
+.success {
+    color: var(--success-color);
+}
+
+.console {
+    font-size: 14px;
+    white-space: pre-wrap;
+    overflow-y: auto;
+    max-height: 80vh;
+    padding: 10px;
+    border: 1px solid var(--text-color);
+    background-color: rgba(0, 0, 0, 0.8);
+}
