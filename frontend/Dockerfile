@@ -3,9 +3,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies based on package manager
+# Install dependencies
 COPY package.json package-lock.json* ./
-RUN npm ci
+# Use npm install instead of ci because package-lock.json might not exist yet
+RUN npm install
 
 # Copy source
 COPY . .
