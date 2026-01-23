@@ -1,9 +1,26 @@
 import React, { useState, useCallback } from 'react';
-import { Upload, Terminal as TerminalIcon, Download, RefreshCw, CheckCircle, AlertCircle, FileCode, Shield } from 'lucide-react';
+import { Upload, Terminal as TerminalIcon, Download, RefreshCw, CheckCircle, AlertCircle, FileCode, Shield, Copy } from 'lucide-react';
 
-interface ModernizationResult {
-  refactored_code: string;
-  dockerfile: string;
+interface ProcessingStateResponse {
+  submission_id: string;
+  status: string;
+  message: string;
+  steps_completed: string[];
+  current_step: string;
+  metadata?: {
+    issues_found?: number;
+    changes_made?: number;
+    new_features?: number;
+    refactor_iterations?: number;
+    build_id?: string;
+    refactored_code?: string;
+    dockerfile?: string;
+  };
+}
+
+interface ModernizationResult extends ProcessingStateResponse {
+  refactored_code?: string;
+  dockerfile?: string;
 }
 
 export default function Home() {
@@ -46,6 +63,7 @@ export default function Home() {
 
   const handleUpload = async (fileToUpload: File) => {
     setStatus('uploading');
+    setLogs([]);
     addLog('Initiating secure upload...');
 
     const formData = new FormData();
@@ -53,46 +71,105 @@ export default function Home() {
 
     try {
       addLog('Sending to Backend Orchestrator...');
-      // Note: In production, use environment variable for URL
       const response = await fetch('http://localhost:8000/upload', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
       }
 
-      setStatus('processing');
-      addLog('Upload complete. Vertex AI Agent initiated.');
-      addLog('Analyzing Legacy Code Architecture...');
-      addLog('Refactoring to Python 3.11...');
-      addLog('Generating Container Configuration...');
-
-      const data = await response.json();
+      const data: ProcessingStateResponse = await response.json();
       
-      setResult(data);
-      setStatus('success');
-      addLog('Modernization Complete. Build Validation Passed.');
+      addLog(`✓ Upload complete. Submission ID: ${data.submission_id}`);
+      addLog(`Status: ${data.message}`);
+      
+      // Log each completed step
+      data.steps_completed?.forEach(step => {
+        addLog(`✓ ${step.toUpperCase()}`);
+      });
+      
+      // Log metadata if available
+      if (data.metadata) {
+        addLog('---');
+        if (data.metadata.issues_found !== undefined) {
+          addLog(`Issues found: ${data.metadata.issues_found}`);
+        }
+        if (data.metadata.changes_made !== undefined) {
+          addLog(`Changes applied: ${data.metadata.changes_made}`);
+        }
+        if (data.metadata.new_features !== undefined) {
+          addLog(`New features: ${data.metadata.new_features}`);
+        }
+        if (data.metadata.refactor_iterations !== undefined) {
+          addLog(`Refactoring iterations: ${data.metadata.refactor_iterations}`);
+        }
+        if (data.metadata.build_id) {
+          addLog(`Build ID: ${data.metadata.build_id}`);
+        }
+      }
+      
+      // Extract refactored code and dockerfile from metadata
+      const refactored_code = data.metadata?.refactored_code || data.refactored_code || '';
+      const dockerfile = data.metadata?.dockerfile || data.dockerfile || '';
+      
+      setResult({
+        ...data,
+        refactored_code,
+        dockerfile
+      });
+
+      if (data.status === 'COMPLETED' || data.status === 'SUCCESS') {
+        setStatus('success');
+        addLog('✓ Modernization Complete. Build Validation Passed.');
+      } else {
+        setStatus('processing');
+        addLog('Processing...');
+      }
 
     } catch (error) {
       console.error(error);
       setStatus('error');
-      addLog(`Critical Failure: ${(error as Error).message}`);
+      addLog(`✗ Error: ${(error as Error).message}`);
     }
   };
 
-  const downloadArtifacts = () => {
-    if (!result) return;
-    
-    // Simple download logic for demo (create a blob for the refactored code)
-    const element = document.createElement("a");
-    const file = new Blob([result.refactored_code], {type: 'text/plain'});
-    element.href = URL.createObjectURL(file);
-    element.download = "modernized_app.py";
-    document.body.appendChild(element); // Required for this to work in FireFox
-    element.click();
-    addLog('Artifact downloaded.');
+  const downloadArtifacts = async () => {
+    if (!result?.refactored_code && !result?.dockerfile) {
+      addLog('No artifacts available for download');
+      return;
+    }
+
+    // Helper function to download individual file
+    const downloadFile = (content: string, filename: string) => {
+      const element = document.createElement('a');
+      const file = new Blob([content], { type: 'text/plain' });
+      element.href = URL.createObjectURL(file);
+      element.download = filename;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+    };
+
+    // Download Python code
+    if (result.refactored_code) {
+      downloadFile(result.refactored_code, 'app.py');
+      addLog('✓ Downloaded: app.py');
+    }
+
+    // Download Dockerfile
+    if (result.dockerfile) {
+      downloadFile(result.dockerfile, 'Dockerfile');
+      addLog('✓ Downloaded: Dockerfile');
+    }
+
+    // Create and download requirements.txt (basic)
+    const requirements = 'fastapi>=0.104.0\nuvicorn>=0.24.0\npydantic>=2.0.0\npython-dotenv>=1.0.0\n';
+    downloadFile(requirements, 'requirements.txt');
+    addLog('✓ Downloaded: requirements.txt');
+
+    addLog('✓ All artifacts downloaded successfully');
   };
 
   return (
@@ -186,11 +263,31 @@ export default function Home() {
              
              {result && (
                <div className="mt-8 pt-8 border-t border-green-900">
-                 <p className="text-green-400 font-bold mb-4">--- ANALYSIS COMPLETE ---</p>
-                 <div className="text-xs opacity-70 mb-2">Dockerfile Preview:</div>
-                 <pre className="bg-green-900/10 p-4 rounded text-xs overflow-x-auto border border-green-900/50">
-                   {result.dockerfile}
-                 </pre>
+                 <p className="text-green-400 font-bold mb-4">--- MODERNIZATION REPORT ---</p>
+                 <div className="text-xs opacity-70 space-y-1 mb-4">
+                   {result.metadata?.issues_found !== undefined && (
+                     <div>Issues Found: {result.metadata.issues_found}</div>
+                   )}
+                   {result.metadata?.changes_made !== undefined && (
+                     <div>Changes Applied: {result.metadata.changes_made}</div>
+                   )}
+                   {result.metadata?.new_features !== undefined && (
+                     <div>New Features: {result.metadata.new_features}</div>
+                   )}
+                   {result.metadata?.refactor_iterations !== undefined && (
+                     <div>Refactor Iterations: {result.metadata.refactor_iterations}</div>
+                   )}
+                 </div>
+                 
+                 {result.dockerfile && (
+                   <>
+                     <div className="text-xs opacity-70 mb-2">Dockerfile Preview:</div>
+                     <pre className="bg-green-900/10 p-4 rounded text-xs overflow-x-auto border border-green-900/50 max-h-32 scrollbar-thin">
+                       {result.dockerfile.substring(0, 400)}
+                       {result.dockerfile.length > 400 && '...'}
+                     </pre>
+                   </>
+                 )}
                </div>
              )}
           </div>

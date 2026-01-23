@@ -8,9 +8,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GOOGLE_CLOUD_PROJECT=retro-fit-hackathon
-      - GOOGLE_CLOUD_REGION=us-central1
-      # Create a credentials.json in ./backend folder
+      - GCP_PROJECT_ID=retro-fit-dev-485215
+      - GCP_REGION=us-central1
+      - GCP_STORAGE_BUCKET=retro-fit-dev-485215-uploads
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
     volumes:
       - ./backend/app:/app/backend/app
@@ -29,11 +29,3 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - backend
-
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    volumes:
-      - db_data:/var/lib/postgresql/data
-
-volumes:
-  db_data:

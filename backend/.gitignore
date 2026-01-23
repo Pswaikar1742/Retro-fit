@@ -1,9 +1,26 @@
-__pycache__/
-*.py[cod]
-*$py.class
+# GCP Credentials
+backend/credentials.json
+backend/secrets/
+*.json.key
+
+# Environment files
 .env
-.venv
-env/
-venv/
-*.so
-credentials.json
+.env.local
+.env.*.local
+
+# Build artifacts
+__pycache__/
+node_modules/
+.next/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
