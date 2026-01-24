@@ -9,7 +9,7 @@ echo "  RETRO-FIT PROJECT - BUILD & TEST SUITE"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
-PROJECT_ROOT="/mnt/Data/Techsprint/Retro-fit"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # Color codes
@@ -125,9 +125,9 @@ echo "PHASE 7: DOCUMENTATION"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
-run_test "FINAL_STATUS.md" "test -f FINAL_STATUS.md"
-run_test "QUICK_START.md" "test -f QUICK_START.md"
-run_test "COMPLETION_SUMMARY.md" "test -f COMPLETION_SUMMARY.md"
+run_test "FINAL_STATUS.md" "test -f docs/FINAL_STATUS.md"
+run_test "QUICK_START.md" "test -f docs/QUICK_START.md"
+run_test "COMPLETION_SUMMARY.md" "test -f docs/COMPLETION_SUMMARY.md"
 run_test "README.md" "test -f README.md"
 
 echo ""

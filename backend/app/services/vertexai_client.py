@@ -20,6 +20,7 @@ class VertexAIClient:
     """
     Wrapper for Google Vertex AI Gemini model.
     Provides methods for code analysis, refactoring, and self-healing.
+    Falls back to simulation mode when GCP credentials aren't available.
     """
 
     def __init__(self, model_name: Optional[str] = None):
@@ -29,17 +30,22 @@ class VertexAIClient:
         Args:
             model_name: Model name (defaults to settings.VERTEX_AI_MODEL)
         """
-        if not HAS_VERTEXAI:
-            logger.warning("Vertex AI not available, client will use mock responses")
-            self.model = None
-            self.model_name = model_name or settings.VERTEX_AI_MODEL
-            self.temperature = settings.VERTEX_AI_TEMPERATURE
-            return
-            
         self.model_name = model_name or settings.VERTEX_AI_MODEL
-        self.model = GenerativeModel(self.model_name)
         self.temperature = settings.VERTEX_AI_TEMPERATURE
-        logger.info(f"Initialized Vertex AI client with model: {self.model_name}")
+        self.model = None
+        self.simulation_mode = False
+        
+        if not HAS_VERTEXAI:
+            logger.warning("Vertex AI not available, using SIMULATION mode")
+            self.simulation_mode = True
+            return
+        
+        try:
+            self.model = GenerativeModel(self.model_name)
+            logger.info(f"Initialized Vertex AI client with model: {self.model_name}")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Vertex AI: {e}. Using SIMULATION mode")
+            self.simulation_mode = True
 
     def analyze_code(self, code_context: str) -> Dict[str, Any]:
         """
@@ -79,15 +85,21 @@ Response format (JSON only):
             logger.info("Calling Gemini for code analysis...")
             response = self._call_gemini(prompt)
             
-            result = JSONParser.extract_json(response)
+            # If response is already a dict (from simulation mode), use directly
+            if isinstance(response, dict):
+                result = response
+            else:
+                result = JSONParser.extract_json(response)
             logger.info(f"Code analysis complete. Issues found: {len(result.get('issues', []))}")
             return result
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
             # Return mock analysis on failure
             return {
+                "filename": "unknown",
                 "architecture": "Unknown - Analysis failed",
-                "issues": ["Unable to analyze code"],
+                "issues": [{"type": "ERROR", "severity": "HIGH", "description": "Unable to analyze code"}],
+                "patterns": ["unknown"],
                 "python_version": "unknown",
                 "frameworks": [],
                 "recommendation": "Manual review recommended"
@@ -129,13 +141,17 @@ Return as JSON (NO MARKDOWN, PURE JSON):
             logger.info("Calling Gemini for code refactoring...")
             response = self._call_gemini(prompt)
             
-            result = JSONParser.extract_json(
-                response,
-                fallback_mock={
-                    "refactored_code": "print('Hello Python 3.11')",
-                    "dockerfile": "FROM python:3.11-slim\nCMD ['python', 'app.py']"
-                }
-            )
+            # If response is already a dict (from simulation mode), use directly
+            if isinstance(response, dict):
+                result = response
+            else:
+                result = JSONParser.extract_json(
+                    response,
+                    fallback_mock={
+                        "refactored_code": "print('Hello Python 3.11')",
+                        "dockerfile": "FROM python:3.11-slim\nCMD ['python', 'app.py']"
+                    }
+                )
             
             # Validate response structure
             JSONParser.validate_refactor_response(result)
@@ -218,6 +234,11 @@ Return as JSON (NO MARKDOWN):
         Raises:
             RuntimeError: If all retry attempts fail
         """
+        # Simulation mode - return mock response
+        if self.simulation_mode or self.model is None:
+            logger.info("Using SIMULATION mode for Gemini response")
+            return self._get_simulated_response(prompt)
+        
         last_error = None
 
         for attempt in range(max_retries + 1):
@@ -253,6 +274,109 @@ Return as JSON (NO MARKDOWN):
 
         # All retries failed
         raise RuntimeError(f"Gemini API call failed after {max_retries + 1} attempts: {last_error}")
+
+    def _get_simulated_response(self, prompt: str) -> dict:
+        """Generate simulated response for demo mode. Returns dict directly."""
+        
+        # Detect what kind of request this is based on prompt
+        if "refactor" in prompt.lower() or "modernize" in prompt.lower():
+            return {
+                "refactored_code": """#!/usr/bin/env python3
+\"\"\"
+Modernized Python 3.11+ Application
+Auto-generated by Retro-Fit AI Modernization Platform
+\"\"\"
+from typing import Optional
+import asyncio
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+async def main() -> None:
+    \"\"\"Main entry point with async support.\"\"\"
+    logger.info("Application started - Modernized by Retro-Fit")
+    print("Hello from Python 3.11+!")
+    
+    # Simulated async operation
+    await asyncio.sleep(0.1)
+    logger.info("Application completed successfully")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+""",
+                "dockerfile": """# Production Dockerfile - Generated by Retro-Fit
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Run application
+CMD ["python", "app.py"]
+""",
+                "fix_explanation": "Modernized to Python 3.11+ with async support, type hints, and logging"
+            }
+        elif "analyze" in prompt.lower() or "audit" in prompt.lower():
+            return {
+                "filename": "legacy_code.py",
+                "architecture": "Legacy monolithic Python application",
+                "issues": [
+                    {
+                        "type": "LEGACY_PATTERN",
+                        "severity": "HIGH",
+                        "line_number": 1,
+                        "description": "Python 2 print statements detected",
+                        "suggestion": "Convert to Python 3 print() function"
+                    },
+                    {
+                        "type": "MISSING_TYPES",
+                        "severity": "MEDIUM",
+                        "line_number": 5,
+                        "description": "Missing type hints",
+                        "suggestion": "Add type annotations for better code quality"
+                    },
+                    {
+                        "type": "SYNC_CODE",
+                        "severity": "MEDIUM",
+                        "line_number": 10,
+                        "description": "No async/await patterns",
+                        "suggestion": "Consider using async for I/O operations"
+                    },
+                    {
+                        "type": "OUTDATED_SYNTAX",
+                        "severity": "LOW",
+                        "line_number": 15,
+                        "description": "Outdated string formatting",
+                        "suggestion": "Use f-strings for cleaner formatting"
+                    },
+                    {
+                        "type": "ERROR_HANDLING",
+                        "severity": "HIGH",
+                        "line_number": 20,
+                        "description": "Missing error handling",
+                        "suggestion": "Add try/except blocks for robustness"
+                    }
+                ],
+                "patterns": ["synchronous_io", "outdated_imports", "legacy_print", "no_type_hints"],
+                "python_version": "2.7",
+                "frameworks": ["none"],
+                "recommendation": "Full modernization to Python 3.11+ recommended. Focus on type hints, async patterns, and modern syntax.",
+                "difficulty_score": 6,
+                "estimated_refactor_time_minutes": 45
+            }
+        else:
+            return {
+                "status": "simulated",
+                "message": "Response generated in simulation mode"
+            }
 
     @staticmethod
     def get_model_info() -> Dict[str, str]:

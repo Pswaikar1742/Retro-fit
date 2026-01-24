@@ -64,19 +64,23 @@ class CodeRefactorer:
                 self._build_refactor_prompt(code, filename, analysis)
             )
             
-            logger.debug(f"Raw refactor response: {refactored[:200]}...")
-            
-            result = self.json_parser.extract_json(
-                refactored,
-                fallback_mock={
-                    "refactored_code": code,  # Return original if parsing fails
-                    "dockerfile": self._generate_default_dockerfile(filename),
-                    "changes_made": ["Code structure preserved"],
-                    "new_features": ["Type hints", "Async/await patterns"],
-                    "breaking_changes": [],
-                    "migration_notes": "No breaking changes detected"
-                }
-            )
+            # Handle both dict and string responses
+            if isinstance(refactored, dict):
+                result = refactored
+                logger.debug(f"Raw refactor response (dict): {str(refactored)[:200]}...")
+            else:
+                logger.debug(f"Raw refactor response: {str(refactored)[:200]}...")
+                result = self.json_parser.extract_json(
+                    refactored,
+                    fallback_mock={
+                        "refactored_code": code,  # Return original if parsing fails
+                        "dockerfile": self._generate_default_dockerfile(filename),
+                        "changes_made": ["Code structure preserved"],
+                        "new_features": ["Type hints", "Async/await patterns"],
+                        "breaking_changes": [],
+                        "migration_notes": "No breaking changes detected"
+                    }
+                )
 
             self._validate_refactor_result(result)
             logger.info(f"Refactoring complete: {len(result.get('changes_made', []))} changes made")

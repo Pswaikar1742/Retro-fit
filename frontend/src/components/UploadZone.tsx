@@ -41,7 +41,7 @@ const UploadZone: React.FC = () => {
             const result = await response.json();
             setSuccess(`File uploaded successfully: ${result.url}`);
         } catch (err) {
-            setError(err.message);
+            setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
             setUploading(false);
         }

@@ -1,6 +1,11 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 from typing import Optional
+import os
+import sys
+
+# Ensure proper module paths for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class Settings(BaseSettings):
     """
@@ -44,7 +49,10 @@ class Settings(BaseSettings):
     )
     
     # Optional: For local dev with service account file
-    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = Field(
+        default="/app/credentials.json",
+        description="Path to Google Cloud service account key file"
+    )
 
     class Config:
         case_sensitive = True

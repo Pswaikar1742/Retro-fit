@@ -40,29 +40,34 @@ class CodeAuditor:
         
         try:
             response = self.gemini_client.analyze_code(prompt)
-            logger.debug(f"Raw analysis response: {response[:200]}...")
             
-            analysis = self.json_parser.extract_json(
-                response,
-                fallback_mock={
-                    "filename": filename,
-                    "issues": [
-                        {
-                            "type": "LEGACY_PATTERN",
-                            "severity": "MEDIUM",
-                            "line_number": 1,
-                            "description": "Legacy code pattern detected",
-                            "suggestion": "Modernize with Python 3.11+ features"
-                        }
-                    ],
-                    "patterns": ["synchronous_io", "outdated_imports"],
-                    "python_version": "3.11",
-                    "frameworks": ["no_framework"],
-                    "recommendation": "Code is modernizable. Focus on async/await patterns and type hints.",
-                    "difficulty_score": 5,
-                    "estimated_refactor_time_minutes": 30
-                }
-            )
+            # Handle both dict and string responses
+            if isinstance(response, dict):
+                analysis = response
+                logger.debug(f"Raw analysis response (dict): {str(response)[:200]}...")
+            else:
+                logger.debug(f"Raw analysis response: {str(response)[:200]}...")
+                analysis = self.json_parser.extract_json(
+                    response,
+                    fallback_mock={
+                        "filename": filename,
+                        "issues": [
+                            {
+                                "type": "LEGACY_PATTERN",
+                                "severity": "MEDIUM",
+                                "line_number": 1,
+                                "description": "Legacy code pattern detected",
+                                "suggestion": "Modernize with Python 3.11+ features"
+                            }
+                        ],
+                        "patterns": ["synchronous_io", "outdated_imports"],
+                        "python_version": "3.11",
+                        "frameworks": ["no_framework"],
+                        "recommendation": "Code is modernizable. Focus on async/await patterns and type hints.",
+                        "difficulty_score": 5,
+                        "estimated_refactor_time_minutes": 30
+                    }
+                )
             
             self._validate_analysis(analysis)
             logger.info(f"Analysis complete: {len(analysis.get('issues', []))} issues found")

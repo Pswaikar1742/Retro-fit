@@ -53,7 +53,7 @@ async def upload_zombie_code(
 ):
     """
     Self-Healing Pipeline:
-    1. Receive & sanitize ZIP
+    1. Receive & sanitize ZIP or Python file
     2. Extract Python files
     3. Audit code (analyze issues)
     4. Refactor code (generate modernized version)
@@ -61,12 +61,16 @@ async def upload_zombie_code(
     6. IF BUILD FAILS: Extract logs → Fix code → Retry (max 3 iterations)
     7. Return refactored code + Dockerfile
     """
-    if not file.filename.endswith('.zip'):
-        raise HTTPException(status_code=400, detail="Only .zip files are supported")
+    is_zip = file.filename.endswith('.zip')
+    is_py = file.filename.endswith('.py')
+    
+    if not is_zip and not is_py:
+        raise HTTPException(status_code=400, detail="Only .zip or .py files are supported")
 
     submission_id = str(uuid.uuid4())
     upload_path = os.path.join(TEMP_DIR, f"{submission_id}_{file.filename}")
     extract_path = os.path.join(TEMP_DIR, submission_id)
+    os.makedirs(extract_path, exist_ok=True)
 
     logger.info(f"[{submission_id}] Starting self-healing pipeline")
 
@@ -78,8 +82,12 @@ async def upload_zombie_code(
             content = await file.read()
             await out_file.write(content)
 
-        with zipfile.ZipFile(upload_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_path)
+        if is_zip:
+            with zipfile.ZipFile(upload_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_path)
+        else:
+            # For single .py files, copy to extract directory
+            shutil.copy(upload_path, os.path.join(extract_path, file.filename))
 
         # Sanitize
         sanitizer_service.sanitize_directory(extract_path)

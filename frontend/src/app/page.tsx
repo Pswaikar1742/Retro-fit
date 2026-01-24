@@ -1,4 +1,6 @@
-import React, { useState, useCallback } from 'react';
+'use client';
+
+import React, { useState, useCallback, useRef } from 'react';
 import { Upload, Terminal as TerminalIcon, Download, RefreshCw, CheckCircle, AlertCircle, FileCode, Shield, Copy } from 'lucide-react';
 
 interface ProcessingStateResponse {
@@ -7,6 +9,8 @@ interface ProcessingStateResponse {
   message: string;
   steps_completed: string[];
   current_step: string;
+  refactored_code?: string;
+  dockerfile?: string;
   metadata?: {
     issues_found?: number;
     changes_made?: number;
@@ -23,15 +27,42 @@ interface ModernizationResult extends ProcessingStateResponse {
   dockerfile?: string;
 }
 
+const WEBSOCKET_URL = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8000/log-streaming';
+
 export default function Home() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
   const [result, setResult] = useState<ModernizationResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addLog = (message: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
+  };
+
+  // Handle click to open file explorer
+  const handleClick = () => {
+    if (status !== 'processing' && status !== 'uploading') {
+      fileInputRef.current?.click();
+    }
+  };
+
+  // Handle file selection from file explorer
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      if (selectedFile.name.endsWith('.zip') || selectedFile.name.endsWith('.py')) {
+        setFile(selectedFile);
+        addLog(`File loaded: ${selectedFile.name}`);
+        handleUpload(selectedFile);
+      } else {
+        addLog('Error: Only .zip or .py files are supported.');
+        setStatus('error');
+      }
+    }
+    // Reset input so same file can be selected again
+    e.target.value = '';
   };
 
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -50,12 +81,12 @@ export default function Home() {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.name.endsWith('.zip')) {
+      if (droppedFile.name.endsWith('.zip') || droppedFile.name.endsWith('.py')) {
         setFile(droppedFile);
         addLog(`File loaded: ${droppedFile.name}`);
         handleUpload(droppedFile);
       } else {
-        addLog('Error: Only .zip files are supported.');
+        addLog('Error: Only .zip or .py files are supported.');
         setStatus('error');
       }
     }
@@ -81,43 +112,27 @@ export default function Home() {
       }
 
       const data: ProcessingStateResponse = await response.json();
-      
+
       addLog(`✓ Upload complete. Submission ID: ${data.submission_id}`);
       addLog(`Status: ${data.message}`);
-      
-      // Log each completed step
+
       data.steps_completed?.forEach(step => {
         addLog(`✓ ${step.toUpperCase()}`);
       });
-      
-      // Log metadata if available
+
       if (data.metadata) {
         addLog('---');
-        if (data.metadata.issues_found !== undefined) {
-          addLog(`Issues found: ${data.metadata.issues_found}`);
-        }
-        if (data.metadata.changes_made !== undefined) {
-          addLog(`Changes applied: ${data.metadata.changes_made}`);
-        }
-        if (data.metadata.new_features !== undefined) {
-          addLog(`New features: ${data.metadata.new_features}`);
-        }
-        if (data.metadata.refactor_iterations !== undefined) {
-          addLog(`Refactoring iterations: ${data.metadata.refactor_iterations}`);
-        }
-        if (data.metadata.build_id) {
-          addLog(`Build ID: ${data.metadata.build_id}`);
-        }
+        Object.entries(data.metadata).forEach(([key, value]) => {
+          if (value !== undefined) {
+            addLog(`${key.replace(/_/g, ' ')}: ${value}`);
+          }
+        });
       }
-      
-      // Extract refactored code and dockerfile from metadata
-      const refactored_code = data.metadata?.refactored_code || data.refactored_code || '';
-      const dockerfile = data.metadata?.dockerfile || data.dockerfile || '';
-      
+
       setResult({
         ...data,
-        refactored_code,
-        dockerfile
+        refactored_code: data.metadata?.refactored_code || data.refactored_code || '',
+        dockerfile: data.metadata?.dockerfile || data.dockerfile || '',
       });
 
       if (data.status === 'COMPLETED' || data.status === 'SUCCESS') {
@@ -127,7 +142,6 @@ export default function Home() {
         setStatus('processing');
         addLog('Processing...');
       }
-
     } catch (error) {
       console.error(error);
       setStatus('error');
@@ -172,6 +186,32 @@ export default function Home() {
     addLog('✓ All artifacts downloaded successfully');
   };
 
+  // Updated WebSocket connection function
+  const connectWebSocket = () => {
+    const ws = new WebSocket(WEBSOCKET_URL);
+
+    ws.onopen = () => {
+      addLog('Connected to log streaming service');
+    };
+
+    ws.onmessage = (event) => {
+      addLog(event.data);
+    };
+
+    ws.onerror = () => {
+      addLog('WebSocket error occurred');
+    };
+
+    ws.onclose = () => {
+      addLog('Disconnected from log streaming service');
+    };
+  };
+
+  // Call WebSocket connection on component mount
+  React.useEffect(() => {
+    connectWebSocket();
+  }, []);
+
   return (
     <main className="min-h-screen bg-black text-green-500 font-mono p-8 selection:bg-green-900 selection:text-white">
       {/* Header */}
@@ -193,6 +233,14 @@ export default function Home() {
         
         {/* Left Panel: Upload Zone */}
         <div className="flex flex-col gap-6">
+          {/* Hidden file input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".zip,.py"
+            className="hidden"
+          />
           <div 
             className={`
               flex-1 border-2 border-dashed rounded-lg transition-all duration-300 flex flex-col items-center justify-center p-12 cursor-pointer
@@ -202,12 +250,13 @@ export default function Home() {
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
+            onClick={handleClick}
           >
             {status === 'idle' || status === 'error' ? (
               <>
                 <Upload className="w-16 h-16 mb-6 opacity-80" />
                 <h2 className="text-xl font-bold mb-2">DROP ZOMBIE CODE HERE</h2>
-                <p className="text-green-700 text-sm">Supports .ZIP archives (Python 2.x)</p>
+                <p className="text-green-700 text-sm">Or click to browse (.zip or .py files)</p>
               </>
             ) : status === 'uploading' ? (
               <div className="flex flex-col items-center animate-pulse">

@@ -9,7 +9,7 @@ from typing import Dict, Any
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routers import modernization
+from app.routers import modernization, github_import
 
 # Configure Logging
 logging.basicConfig(level=logging.getLevelName(settings.LOG_LEVEL))
@@ -45,6 +45,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(modernization.router)
+app.include_router(github_import.router)
 
 # Initialize Vertex AI
 try:
