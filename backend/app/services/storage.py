@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import os
+import shutil
 from google.cloud import storage
+from pathlib import Path
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -15,7 +17,9 @@ class StorageService:
         
         self.use_mock = use_mock
         self.bucket_name = settings.GCP_STORAGE_BUCKET
-        
+        self.credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.local_storage_path = Path("temp/uploads")
+
         if self.use_mock:
             logger.info("Using MOCK storage mode (no GCP credentials)")
             self.client = None
@@ -27,6 +31,13 @@ class StorageService:
                 logger.warning(f"Failed to initialize real GCS client: {e}, falling back to mock mode")
                 self.use_mock = True
                 self.client = None
+
+        if not self.use_mock and not self.credentials_path:
+            self.use_mock = True
+            logger.info("No Google Cloud credentials found, switching to local storage.")
+        
+        if self.use_mock:
+            self.local_storage_path.mkdir(parents=True, exist_ok=True)
 
     async def upload_file(self, source_file_name: str, destination_blob_name: str) -> str:
         """
@@ -64,10 +75,23 @@ class StorageService:
         Blocking upload operation (runs in thread pool).
         Separated from async method for clarity.
         """
+        if self.use_mock:
+            return self._upload_to_local(source_file_name, destination_blob_name)
+
         bucket = self.client.bucket(self.bucket_name)
         blob = bucket.blob(destination_blob_name)
         blob.upload_from_filename(source_file_name)
         return f"gs://{self.bucket_name}/{destination_blob_name}"
+
+    def _upload_to_local(self, file_path: str, destination: str):
+        try:
+            dest_path = self.local_storage_path / destination
+            shutil.copy(file_path, dest_path)
+            logger.info(f"Uploaded {file_path} to local storage at {dest_path}.")
+            return str(dest_path)
+        except Exception as e:
+            logger.error(f"Failed to upload to local storage: {e}")
+            raise
 
     def list_files(self, prefix: str):
         """Lists all the blobs in the bucket that begin with the prefix."""

@@ -69,6 +69,7 @@ class CodeAuditor:
                     }
                 )
             
+            analysis = self._normalize_analysis(analysis, filename)
             self._validate_analysis(analysis)
             logger.info(f"Analysis complete: {len(analysis.get('issues', []))} issues found")
             return analysis
@@ -204,6 +205,24 @@ Focus on:
         if missing:
             logger.warning(f"Analysis missing keys: {missing}")
             raise ValueError(f"Invalid analysis structure: missing {missing}")
+
+    @staticmethod
+    def _normalize_analysis(analysis: Dict[str, Any], filename: str) -> Dict[str, Any]:
+        """Ensure analysis contains required keys with safe defaults."""
+        if not isinstance(analysis, dict):
+            return {
+                "filename": filename,
+                "issues": [],
+                "patterns": [],
+                "recommendation": "No recommendation available.",
+            }
+
+        normalized = dict(analysis)
+        normalized.setdefault("filename", filename)
+        normalized.setdefault("issues", [])
+        normalized.setdefault("patterns", [])
+        normalized.setdefault("recommendation", "No recommendation available.")
+        return normalized
 
 
 class AnalysisReport:

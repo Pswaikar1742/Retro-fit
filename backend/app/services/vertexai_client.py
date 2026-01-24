@@ -1,12 +1,16 @@
+import os
 import logging
 from typing import Dict, Any, Optional
+import requests
 
 # Lazy-load Vertex AI to avoid import hangs
 try:
+    import google.generativeai as local_ai
     from vertexai.generative_models import GenerativeModel, GenerationConfig
     HAS_VERTEXAI = True
 except ImportError:
     HAS_VERTEXAI = False
+    local_ai = None
     GenerativeModel = None
     GenerationConfig = None
 
@@ -34,18 +38,41 @@ class VertexAIClient:
         self.temperature = settings.VERTEX_AI_TEMPERATURE
         self.model = None
         self.simulation_mode = False
-        
-        if not HAS_VERTEXAI:
-            logger.warning("Vertex AI not available, using SIMULATION mode")
-            self.simulation_mode = True
-            return
-        
-        try:
-            self.model = GenerativeModel(self.model_name)
-            logger.info(f"Initialized Vertex AI client with model: {self.model_name}")
-        except Exception as e:
-            logger.warning(f"Failed to initialize Vertex AI: {e}. Using SIMULATION mode")
-            self.simulation_mode = True
+
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.ollama_model = os.getenv("OLLAMA_MODEL")
+        self.mode = "simulation"
+
+        if self.ollama_model:
+            self.mode = "ollama"
+            logger.info(f"Using Ollama model: {self.ollama_model}.")
+        elif self.api_key and local_ai:
+            self.mode = "local"
+            local_ai.configure(api_key=self.api_key)
+            logger.info("Using Local AI with GEMINI_API_KEY.")
+        elif self.credentials_path and HAS_VERTEXAI:
+            self.mode = "cloud"
+            vertexai.init(project=os.getenv("GCP_PROJECT_ID"), location=os.getenv("GCP_REGION"))
+            logger.info("Using Vertex AI with GOOGLE_APPLICATION_CREDENTIALS.")
+        else:
+            logger.warning("No valid AI configuration found. Falling back to Simulation Mode.")
+
+        self.simulation_mode = self.mode == "simulation"
+
+    def _simulate_analysis_response(self):
+        """Simulate a valid analysis response."""
+        response = {
+            "filename": "main.py",
+            "issues": [],
+            "patterns": [],
+            "recommendation": "No issues found. Code is modern and follows best practices.",
+            "python_version": "3.11",
+            "frameworks": [],
+            "estimated_refactor_time_minutes": 0
+        }
+        logger.debug(f"Simulated analysis response: {response}")
+        return response
 
     def analyze_code(self, code_context: str) -> Dict[str, Any]:
         """
@@ -65,16 +92,20 @@ CODE:
 {code_context}
 
 Provide your response as a JSON object with these keys:
+- "filename": Original filename
 - "architecture": Description of current architecture/design
 - "issues": List of identified problems (max 10)
+- "patterns": List of detected patterns
 - "python_version": Detected Python version
 - "frameworks": List of detected frameworks
 - "recommendation": High-level modernization strategy
 
 Response format (JSON only):
 {{
+    "filename": "...",
     "architecture": "...",
     "issues": ["issue1", "issue2"],
+    "patterns": ["pattern1", "pattern2"],
     "python_version": "2.7 or 3.x",
     "frameworks": ["flask", "django"],
     "recommendation": "..."
@@ -83,8 +114,12 @@ Response format (JSON only):
 
         try:
             logger.info("Calling Gemini for code analysis...")
+            if self.simulation_mode:
+                logger.info("Using SIMULATION mode for Gemini response")
+                return self._simulate_analysis_response()
+
             response = self._call_gemini(prompt)
-            
+
             # If response is already a dict (from simulation mode), use directly
             if isinstance(response, dict):
                 result = response
@@ -140,7 +175,7 @@ Return as JSON (NO MARKDOWN, PURE JSON):
         try:
             logger.info("Calling Gemini for code refactoring...")
             response = self._call_gemini(prompt)
-            
+
             # If response is already a dict (from simulation mode), use directly
             if isinstance(response, dict):
                 result = response
@@ -152,7 +187,7 @@ Return as JSON (NO MARKDOWN, PURE JSON):
                         "dockerfile": "FROM python:3.11-slim\nCMD ['python', 'app.py']"
                     }
                 )
-            
+
             # Validate response structure
             JSONParser.validate_refactor_response(result)
             logger.info("Code refactoring complete")
@@ -207,13 +242,13 @@ Return as JSON (NO MARKDOWN):
         try:
             logger.info(f"Self-healing attempt {iteration}: Calling Gemini with error context...")
             response = self._call_gemini(prompt)
-            
+
             result = JSONParser.extract_json(response)
-            
+
             # Validate response
             if "refactored_code" not in result or "dockerfile" not in result:
                 raise ValueError("Fix response missing required fields")
-            
+
             logger.info(f"Self-healing iteration {iteration} complete: {result.get('fix_explanation', 'N/A')}")
             return result
         except Exception as e:
@@ -235,16 +270,19 @@ Return as JSON (NO MARKDOWN):
             RuntimeError: If all retry attempts fail
         """
         # Simulation mode - return mock response
+        if self.mode == "ollama":
+            return self._call_ollama(prompt)
+
         if self.simulation_mode or self.model is None:
             logger.info("Using SIMULATION mode for Gemini response")
             return self._get_simulated_response(prompt)
-        
+
         last_error = None
 
         for attempt in range(max_retries + 1):
             try:
                 logger.debug(f"Gemini API call (attempt {attempt + 1}/{max_retries + 1})")
-                
+
                 response = self.model.generate_content(
                     prompt,
                     generation_config=GenerationConfig(
@@ -253,17 +291,17 @@ Return as JSON (NO MARKDOWN):
                         max_output_tokens=4096
                     )
                 )
-                
+
                 if not response or not response.text:
                     raise ValueError("Empty response from Gemini")
-                
+
                 logger.debug(f"Received response ({len(response.text)} chars)")
                 return response.text
 
             except Exception as e:
                 last_error = e
                 logger.warning(f"Gemini API attempt {attempt + 1} failed: {e}")
-                
+
                 if attempt < max_retries:
                     import time
                     wait_time = 2 ** attempt  # Exponential backoff
@@ -277,7 +315,7 @@ Return as JSON (NO MARKDOWN):
 
     def _get_simulated_response(self, prompt: str) -> dict:
         """Generate simulated response for demo mode. Returns dict directly."""
-        
+
         # Detect what kind of request this is based on prompt
         if "refactor" in prompt.lower() or "modernize" in prompt.lower():
             return {
@@ -298,7 +336,7 @@ async def main() -> None:
     \"\"\"Main entry point with async support.\"\"\"
     logger.info("Application started - Modernized by Retro-Fit")
     print("Hello from Python 3.11+!")
-    
+
     # Simulated async operation
     await asyncio.sleep(0.1)
     logger.info("Application completed successfully")
@@ -324,7 +362,7 @@ CMD ["python", "app.py"]
 """,
                 "fix_explanation": "Modernized to Python 3.11+ with async support, type hints, and logging"
             }
-        elif "analyze" in prompt.lower() or "audit" in prompt.lower():
+        elif any(keyword in prompt.lower() for keyword in ["analyze", "analysis", "audit", "issues", "recommendation"]):
             return {
                 "filename": "legacy_code.py",
                 "architecture": "Legacy monolithic Python application",
@@ -377,6 +415,37 @@ CMD ["python", "app.py"]
                 "status": "simulated",
                 "message": "Response generated in simulation mode"
             }
+
+    def _call_ollama(self, prompt: str) -> str:
+        """
+        Call Ollama local model (local-first).
+
+        Returns:
+            Response text from Ollama
+        """
+        if not self.ollama_model:
+            raise RuntimeError("OLLAMA_MODEL not set for Ollama mode")
+
+        host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        url = f"{host}/api/generate"
+        payload = {
+            "model": self.ollama_model,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json"
+        }
+
+        try:
+            response = requests.post(url, json=payload, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            response_text = data.get("response", "")
+            if not response_text:
+                raise ValueError("Empty response from Ollama")
+            return response_text
+        except Exception as e:
+            logger.error(f"Ollama call failed: {e}")
+            raise
 
     @staticmethod
     def get_model_info() -> Dict[str, str]:

@@ -15,6 +15,10 @@ from app.routers import modernization, github_import
 logging.basicConfig(level=logging.getLevelName(settings.LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
+# Add the missing import for vertexai
+import vertexai
+from vertexai.generative_models import GenerativeModel, GenerationConfig
+
 # Lazy-load Vertex AI (can hang on import)
 _vertex_ai_initialized = False
 def _init_vertex_ai():
@@ -28,7 +32,7 @@ def _init_vertex_ai():
         _vertex_ai_initialized = True
         logger.info("Vertex AI initialized")
     except Exception as e:
-        logger.warning(f"Vertex AI init failed: {e}")
+        logger.warning(f"Vertex AI init failed: {e}. Using MOCK MODE for Vertex AI.")
         _vertex_ai_initialized = False
 
 # Initialize FastAPI

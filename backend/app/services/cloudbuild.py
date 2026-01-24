@@ -18,24 +18,19 @@ class CloudBuildService:
     Triggers builds, monitors status, and retrieves logs.
     """
 
-    def __init__(self, use_simulate_mode: bool = False):
+    def __init__(self, use_simulate_mode: bool = True):
         """
         Initialize Cloud Build service.
 
         Args:
             use_simulate_mode: If True, simulate responses without calling GCP
         """
-        self.use_simulate_mode = use_simulate_mode or not HAS_BUILD_V1
+        self.use_simulate_mode = use_simulate_mode
         self.project_id = settings.GCP_PROJECT_ID
         self.region = settings.GCP_REGION
         
-        if not HAS_BUILD_V1:
-            logger.warning("google-cloud-build not available, using simulate mode")
-            self.use_simulate_mode = True
-        
         if self.use_simulate_mode:
-            logger.info("Cloud Build service in simulate mode")
-            self.client = None
+            logger.info("Cloud Build service in simulate mode.")
         else:
             try:
                 self.client = build_v1.CloudBuildClient()

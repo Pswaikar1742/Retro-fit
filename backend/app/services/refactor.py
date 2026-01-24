@@ -4,6 +4,7 @@ import tempfile
 import os
 import zipfile
 from typing import Dict, Any, Tuple, TYPE_CHECKING
+from app.services.auditor import AnalysisReport
 
 if TYPE_CHECKING:
     from app.services.vertexai_client import VertexAIClient
@@ -66,38 +67,14 @@ class CodeRefactorer:
             
             # Handle both dict and string responses
             if isinstance(refactored, dict):
-                result = refactored
-                logger.debug(f"Raw refactor response (dict): {str(refactored)[:200]}...")
+                logger.debug(f"Refactored result (dict): {str(refactored)[:200]}...")
             else:
-                logger.debug(f"Raw refactor response: {str(refactored)[:200]}...")
-                result = self.json_parser.extract_json(
-                    refactored,
-                    fallback_mock={
-                        "refactored_code": code,  # Return original if parsing fails
-                        "dockerfile": self._generate_default_dockerfile(filename),
-                        "changes_made": ["Code structure preserved"],
-                        "new_features": ["Type hints", "Async/await patterns"],
-                        "breaking_changes": [],
-                        "migration_notes": "No breaking changes detected"
-                    }
-                )
+                logger.debug(f"Refactored result: {str(refactored)[:200]}...")
 
-            self._validate_refactor_result(result)
-            logger.info(f"Refactoring complete: {len(result.get('changes_made', []))} changes made")
-            
-            return {
-                "filename": filename,
-                "refactored_code": result.get("refactored_code"),
-                "dockerfile": result.get("dockerfile"),
-                "analysis": analysis,
-                "changes_made": result.get("changes_made", []),
-                "new_features": result.get("new_features", []),
-                "breaking_changes": result.get("breaking_changes", []),
-                "migration_notes": result.get("migration_notes", ""),
-            }
+            return refactored
 
         except Exception as e:
-            logger.error(f"Refactoring failed: {e}")
+            logger.error(f"Failed to refactor code: {e}")
             raise RuntimeError(f"Code refactoring failed: {e}")
 
     def generate_requirements_txt(
