@@ -42,16 +42,6 @@ class Settings(BaseSettings):
         description="Temperature for Vertex AI generation (0.0-1.0)"
     )
     
-    # Ollama Configuration (Local-first AI)
-    OLLAMA_MODEL: Optional[str] = Field(
-        default=None,
-        description="Ollama model name for local AI (e.g., llama3.1:8b-instruct-q4_K_M)"
-    )
-    OLLAMA_HOST: str = Field(
-        default="http://localhost:11434",
-        description="Ollama server host URL"
-    )
-    
     # Logging Configuration
     LOG_LEVEL: str = Field(
         default="INFO",

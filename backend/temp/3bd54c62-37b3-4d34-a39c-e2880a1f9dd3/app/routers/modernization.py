@@ -53,7 +53,7 @@ async def upload_zombie_code(
 ):
     """
     Self-Healing Pipeline:
-    1. Receive & sanitize ZIP or Python file
+    1. Receive & sanitize ZIP
     2. Extract Python files
     3. Audit code (analyze issues)
     4. Refactor code (generate modernized version)
@@ -61,16 +61,12 @@ async def upload_zombie_code(
     6. IF BUILD FAILS: Extract logs → Fix code → Retry (max 3 iterations)
     7. Return refactored code + Dockerfile
     """
-    is_zip = file.filename.endswith('.zip')
-    is_py = file.filename.endswith('.py')
-    
-    if not is_zip and not is_py:
-        raise HTTPException(status_code=400, detail="Only .zip or .py files are supported")
+    if not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Only .zip files are supported")
 
     submission_id = str(uuid.uuid4())
     upload_path = os.path.join(TEMP_DIR, f"{submission_id}_{file.filename}")
     extract_path = os.path.join(TEMP_DIR, submission_id)
-    os.makedirs(extract_path, exist_ok=True)
 
     logger.info(f"[{submission_id}] Starting self-healing pipeline")
 
@@ -82,12 +78,8 @@ async def upload_zombie_code(
             content = await file.read()
             await out_file.write(content)
 
-        if is_zip:
-            with zipfile.ZipFile(upload_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_path)
-        else:
-            # For single .py files, copy to extract directory
-            shutil.copy(upload_path, os.path.join(extract_path, file.filename))
+        with zipfile.ZipFile(upload_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_path)
 
         # Sanitize
         sanitizer_service.sanitize_directory(extract_path)
@@ -134,12 +126,6 @@ async def upload_zombie_code(
 
         # ====== RETURN RESULTS ======
         logger.info(f"[{submission_id}] Pipeline complete! Returning modernized code")
-        
-        # Get the refactored data
-        final_code = refactored_result.get('refactored_code', '')
-        final_dockerfile = refactored_result.get('dockerfile', '')
-        
-        logger.info(f"[{submission_id}] Final code length: {len(final_code)}, dockerfile length: {len(final_dockerfile)}")
 
         return ProcessingStateResponse(
             submission_id=submission_id,
@@ -147,14 +133,14 @@ async def upload_zombie_code(
             message=f"Code modernized successfully! {len(refactored_result.get('changes_made', []))} improvements applied.",
             steps_completed=["ingest", "sanitize", "audit", "refactor", "build_triggered"],
             current_step="completed",
-            refactored_code=final_code,
-            dockerfile=final_dockerfile,
             metadata={
                 "issues_found": len(analysis.get('issues', [])),
                 "changes_made": len(refactored_result.get('changes_made', [])),
                 "new_features": len(refactored_result.get('new_features', [])),
                 "refactor_iterations": refactored_result.get('iteration', 1),
                 "build_id": build_info.get('build_id'),
+                "refactored_code": refactored_result.get('refactored_code')[:200] + "...",
+                "dockerfile": refactored_result.get('dockerfile'),
             }
         )
 
@@ -233,18 +219,11 @@ async def _refactor_with_retry(
             # In production, would trigger build and check logs
             logger.info(f"[{submission_id}] Refactoring successful on attempt {iteration}")
             
-            # Ensure we have valid data
-            refactored_code = refactored.get("refactored_code", "") if refactored else ""
-            dockerfile = refactored.get("dockerfile", "") if refactored else ""
-            
-            # Log what we're returning
-            logger.info(f"[{submission_id}] Returning refactored_code length: {len(refactored_code)}, dockerfile length: {len(dockerfile)}")
-            
             return {
-                "refactored_code": refactored_code if refactored_code else code,
-                "dockerfile": dockerfile if dockerfile else "FROM python:3.11-slim\nWORKDIR /app\nCOPY . .\nCMD [\"python\", \"app.py\"]",
-                "changes_made": refactored.get("changes_made", []) if refactored else [],
-                "new_features": refactored.get("new_features", []) if refactored else [],
+                "refactored_code": refactored.get("refactored_code", code),
+                "dockerfile": refactored.get("dockerfile", ""),
+                "changes_made": refactored.get("changes_made", []),
+                "new_features": refactored.get("new_features", []),
                 "iteration": iteration
             }
             

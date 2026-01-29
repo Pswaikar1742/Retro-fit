@@ -46,6 +46,3 @@ class ProcessingStateResponse(BaseModel):
     steps_completed: List[str] = []
     current_step: str | None = None
     error: str | None = None
-    metadata: Dict[str, Any] | None = None
-    refactored_code: str | None = None
-    dockerfile: str | None = None

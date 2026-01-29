@@ -112,6 +112,12 @@ export default function Home() {
       }
 
       const data: ProcessingStateResponse = await response.json();
+      
+      // Debug: log the entire response
+      console.log('Backend response:', data);
+      console.log('Metadata:', data.metadata);
+      console.log('refactored_code:', data.metadata?.refactored_code?.substring(0, 100));
+      console.log('dockerfile:', data.metadata?.dockerfile?.substring(0, 100));
 
       addLog(`✓ Upload complete. Submission ID: ${data.submission_id}`);
       addLog(`Status: ${data.message}`);
@@ -129,13 +135,21 @@ export default function Home() {
         });
       }
 
-      setResult({
+      const resultData = {
         ...data,
         refactored_code: data.metadata?.refactored_code || data.refactored_code || '',
         dockerfile: data.metadata?.dockerfile || data.dockerfile || '',
-      });
+      };
+      
+      console.log('Setting result:', resultData);
+      console.log('refactored_code length:', resultData.refactored_code?.length);
+      console.log('dockerfile length:', resultData.dockerfile?.length);
+      
+      setResult(resultData);
 
-      if (data.status === 'COMPLETED' || data.status === 'SUCCESS') {
+      // Check status (case-insensitive)
+      const statusUpper = data.status?.toUpperCase();
+      if (statusUpper === 'COMPLETED' || statusUpper === 'SUCCESS') {
         setStatus('success');
         addLog('✓ Modernization Complete. Build Validation Passed.');
       } else {
@@ -150,6 +164,10 @@ export default function Home() {
   };
 
   const downloadArtifacts = async () => {
+    console.log('Download clicked, result:', result);
+    console.log('refactored_code:', result?.refactored_code?.substring(0, 100));
+    console.log('dockerfile:', result?.dockerfile?.substring(0, 100));
+    
     if (!result?.refactored_code && !result?.dockerfile) {
       addLog('No artifacts available for download');
       return;
@@ -167,13 +185,13 @@ export default function Home() {
     };
 
     // Download Python code
-    if (result.refactored_code) {
-      downloadFile(result.refactored_code, 'app.py');
-      addLog('✓ Downloaded: app.py');
+    if (result.refactored_code && result.refactored_code.length > 0) {
+      downloadFile(result.refactored_code, 'modernized_app.py');
+      addLog('✓ Downloaded: modernized_app.py');
     }
 
     // Download Dockerfile
-    if (result.dockerfile) {
+    if (result.dockerfile && result.dockerfile.length > 0) {
       downloadFile(result.dockerfile, 'Dockerfile');
       addLog('✓ Downloaded: Dockerfile');
     }
@@ -262,6 +280,12 @@ export default function Home() {
               <div className="flex flex-col items-center animate-pulse">
                 <Upload className="w-16 h-16 mb-6" />
                 <p className="text-lg">UPLOADING...</p>
+              </div>
+            ) : status === 'success' ? (
+              <div className="flex flex-col items-center">
+                <CheckCircle className="w-16 h-16 mb-6 text-green-400" />
+                <p className="text-lg text-green-400">MODERNIZATION COMPLETE!</p>
+                <p className="text-sm text-green-600 mt-2">Click Download Artifacts to get your code</p>
               </div>
             ) : (
               <div className="flex flex-col items-center">

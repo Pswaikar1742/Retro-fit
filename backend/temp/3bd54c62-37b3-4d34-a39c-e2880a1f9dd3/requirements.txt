@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+google-cloud-storage
+google-cloud-build
+google-cloud-aiplatform
+pydantic
+requests
+python-dotenv
+google-cloud-pubsub
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+python-multipart
+pydantic-settings
+aiofiles

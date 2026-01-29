@@ -8,10 +8,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GCP_PROJECT_ID=retro-fit-dev-485215
-      - GCP_REGION=us-central1
-      - GCP_STORAGE_BUCKET=retro-fit-dev-485215-uploads
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - OLLAMA_MODEL=llama3.1:8b-instruct-q4_K_M
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - LOG_LEVEL=INFO
+      # Uncomment below for GCP mode instead of Ollama
+      # - GCP_PROJECT_ID=retro-fit-dev-485215
+      # - GCP_REGION=us-central1
+      # - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/app:/app/backend/app
       - ./backend/credentials.json:/app/credentials.json
